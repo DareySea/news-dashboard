@@ -1,0 +1,18 @@
+[Unit]
+Description=Дашборд мониторинга новостей
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dashboard
+WorkingDirectory=/opt/dashboard/app
+EnvironmentFile=/etc/dashboard.env
+Environment=TZ=Europe/Moscow
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node server.js
+# упал — поднимаем через 5 секунд; так дашборд работает 24/7
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

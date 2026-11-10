@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мониторинг новостей</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --text:#1d1f23; --muted:#6b7280; --line:#e3e5e8; --accent:#2457d6; --mark:#ffe58a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,"Segoe UI",sans-serif; color:var(--text); background:var(--bg); display:flex; height:100vh; }
+  button { font:inherit; cursor:pointer; border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 12px; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  aside { width:260px; background:#1f2430; color:#e8eaf0; display:flex; flex-direction:column; padding:16px 0; flex-shrink:0; }
+  aside h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#9aa3b5; margin:16px 16px 6px; }
+  aside nav button, aside .reports a { display:block; width:100%; text-align:left; background:none; border:0; border-radius:0; color:inherit; padding:8px 16px; text-decoration:none; }
+  aside nav button[aria-current="true"] { background:#2f3646; border-left:3px solid #6f97ff; padding-left:13px; }
+  aside nav button:hover, aside .reports a:hover { background:#2a3040; }
+  aside .add { margin:8px 16px; background:#2f3646; color:#fff; border-color:#3d4558; }
+  aside .reports { overflow:auto; flex:1; font-size:13px; }
+  main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  header { display:flex; align-items:center; gap:10px; padding:12px 24px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:20px; margin:0; flex:1; }
+  header .meta { color:var(--muted); font-size:13px; width:100%; }
+  .errors { color:#b42318; font-size:13px; width:100%; }
+  #feed { overflow-y:auto; flex:1; padding:16px 24px; }
+  .item { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 18px; margin:0 auto 10px; max-width:900px; cursor:pointer; display:block; width:100%; text-align:left; }
+  .item:hover, .item:focus-visible { border-color:var(--accent); outline:none; box-shadow:0 1px 4px rgba(36,87,214,.15); }
+  .item small { color:var(--muted); }
+  .item h3 { margin:2px 0 4px; font-size:16px; }
+  .item p { margin:0; color:#374151; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .item p.frag { margin-top:6px; color:var(--muted); font-size:14px; -webkit-line-clamp:2; }
+  .empty { text-align:center; color:var(--muted); margin-top:60px; }
+  mark { background:var(--mark); padding:0 1px; }
+  dialog { border:0; border-radius:10px; padding:0; box-shadow:0 10px 40px rgba(0,0,0,.3); }
+  dialog::backdrop { background:rgba(15,20,30,.45); }
+  #article { width:50vw; min-width:min(560px,95vw); height:80vh; }
+  #article .wrap { display:flex; flex-direction:column; height:100%; }
+  #article .head { padding:16px 22px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:flex-start; }
+  #article .head h2 { margin:0; font-size:19px; flex:1; }
+  #article .body { padding:16px 22px; overflow-y:auto; flex:1; }
+  #article .body p { margin:0 0 .8em; }
+  #settings { width:min(640px,95vw); }
+  #settings form { padding:20px 24px; display:grid; gap:12px; }
+  #settings label { display:grid; gap:4px; font-weight:600; font-size:14px; }
+  #settings label span { font-weight:400; color:var(--muted); font-size:12px; }
+  #settings input, #settings textarea { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-weight:400; }
+  #settings textarea { min-height:90px; font-family:ui-monospace,Consolas,monospace; font-size:13px; }
+  #srcStatus { list-style:none; margin:-4px 0 0; padding:0; font-size:13px; display:grid; gap:6px; max-height:220px; overflow:auto; }
+  #srcStatus li { padding:6px 8px; border-radius:6px; background:#f6f7f9; overflow-wrap:anywhere; }
+  #srcStatus li.ok { background:#ecfdf3; } #srcStatus li.warn { background:#fffaeb; } #srcStatus li.bad { background:#fef3f2; }
+  #srcStatus small { color:var(--muted); display:block; }
+  #settings fieldset.checks { border:1px solid var(--line); border-radius:6px; padding:8px 12px 10px; margin:0; display:grid; gap:6px; }
+  #settings fieldset.checks legend { font-weight:600; font-size:14px; padding:0 4px; }
+  #settings fieldset.checks label { display:block; font-weight:400; }
+  #settings legend span, #settings fieldset.checks label span { display:block; margin-left:0; }
+  #settings fieldset.checks label span { margin-left:24px; }
+  #settings .row { display:flex; gap:8px; justify-content:flex-end; }
+  #settings .row .danger { margin-right:auto; color:#b42318; }
+  [hidden] { display:none !important; }
+  /* ТВ */
+  #tvView { display:flex; flex-direction:column; flex:1; min-height:0; }
+  a.btn { font:inherit; font-size:14px; border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 12px; color:inherit; text-decoration:none; }
+  #tvList { width:100%; display:flex; flex-wrap:wrap; gap:6px; }
+  #tvList button { padding:5px 12px; border-radius:16px; font-size:14px; }
+  #tvList button[aria-pressed="true"] { background:var(--accent); color:#fff; border-color:var(--accent); }
+  #tvPlayer { flex:1; min-height:0; margin:16px 24px; display:flex; align-items:center; justify-content:center; }
+  #tvPlayer iframe, #tvPlayer video { width:100%; max-height:100%; aspect-ratio:16/9; max-width:calc((100vh - 190px) * 16 / 9); border:0; border-radius:8px; background:#000; }
+  #tvPlayer.page iframe { aspect-ratio:auto; height:100%; max-width:none; background:#fff; border:1px solid var(--line); }
+  #tvPlayer .tv-msg { color:var(--muted); text-align:center; background:#fff; border:1px solid var(--line); border-radius:8px; padding:32px 40px; }
+  #tvPlayer .tv-msg p { margin:0 0 16px; }
+  #tvPlayer .tv-msg b { color:var(--text); }
+  #tvPlayer .tv-msg button { font-size:16px; padding:10px 20px; }
+  /* календарь */
+  #calView { display:flex; flex-direction:column; flex:1; min-height:0; }
+  #calView header h1.cal-title { flex:0 0 auto; min-width:170px; text-align:center; }
+  #calView .spacer { flex:1; }
+  #calGrid { flex:1; display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); grid-template-rows:auto repeat(6, minmax(84px, 1fr)); gap:1px; background:var(--line); margin:16px 24px; border:1px solid var(--line); border-radius:8px; overflow:auto; }
+  #calGrid .wd { background:#f9fafb; padding:6px 8px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  #calGrid .day { background:#fff; padding:4px 6px; cursor:pointer; display:flex; flex-direction:column; gap:2px; min-width:0; overflow:hidden; }
+  #calGrid .day:hover, #calGrid .day:focus-visible { background:#f5f8ff; outline:none; }
+  #calGrid .day.other { background:#fafafa; }
+  #calGrid .day.other .num { color:#b6bcc6; }
+  #calGrid .num { font-size:13px; font-weight:600; align-self:flex-start; min-width:24px; height:24px; line-height:24px; text-align:center; border-radius:12px; }
+  #calGrid .today .num { background:var(--accent); color:#fff; }
+  #calGrid .chip { font-size:12px; padding:1px 6px; border-radius:4px; background:#e8efff; color:#1e3a8a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #calGrid .chip.google { background:#e6f4ea; color:#14532d; }
+  #calGrid .chip.holiday { background:#fff1e0; color:#9a3412; }
+  #calGrid .chip.holiday.official { background:#f97316; color:#fff; font-weight:600; }
+  #calGrid .chip.holiday.fun { background:#fffaf5; color:#c2410c; font-style:italic; box-shadow:inset 0 0 0 1px #fed7aa; }
+  #dayList li.holiday.fun { border-left-style:dashed; font-style:italic; }
+  #calGrid .off .num { color:#ea580c; }
+  #calGrid .today.off .num { color:#fff; }
+  #calView[data-scope="holidays"] .work-only, #calView[data-scope="work"] .hol-only { display:none !important; }
+  #dayDlg[data-scope="holidays"] #evForm { display:none; }
+  #calGrid.loading { opacity:.55; transition:opacity .15s .1s; }
+  #holFilters { width:100%; display:flex; flex-wrap:wrap; gap:6px; }
+  #holFilters button { font-size:13px; padding:3px 10px; border-radius:14px; background:#fff; color:#9a3412; border-color:#fed7aa; }
+  #holFilters button[aria-pressed="true"] { background:#ffedd5; border-color:#f97316; }
+  #holFilters button[aria-pressed="true"].official { background:#f97316; color:#fff; }
+  #holFilters button[aria-pressed="false"] { color:var(--muted); border-color:var(--line); text-decoration:line-through; }
+  #holFilters small { opacity:.7; margin-left:3px; }
+  #calView .legend { margin-left:16px; white-space:nowrap; }
+  #calView .lg { display:inline-block; width:10px; height:10px; border-radius:2px; margin:0 4px 0 10px; vertical-align:-1px; }
+  #calView .lg.local { background:#c7d7fe; } #calView .lg.google { background:#bbe5c8; } #calView .lg.holiday { background:#f97316; } #calView .lg.fun { background:#fffaf5; box-shadow:inset 0 0 0 1px #fdba74; }
+  #dayList li.holiday { border-color:#f97316; background:#fff7ed; }
+  #dayList li.holiday .tag { color:#9a3412; background:#ffedd5; }
+  #dayList li.holiday.official { font-weight:600; }
+  #calGrid .more { font-size:12px; color:var(--muted); padding-left:6px; }
+  .dlg { width:min(560px, 95vw); padding:0 0 20px; }
+  .dlg .head { display:flex; align-items:center; gap:12px; padding:16px 22px; border-bottom:1px solid var(--line); }
+  .dlg .head h2 { margin:0; font-size:18px; flex:1; }
+  .dlg .head h2::first-letter { text-transform:uppercase; }
+  .dlg form, form.dlg { display:grid; gap:10px; }
+  #evForm { padding:0 22px; }
+  form.dlg > :not(.head) { margin-left:22px; margin-right:22px; }
+  .dlg h3 { margin:8px 0 0; font-size:15px; }
+  .dlg label { display:grid; gap:4px; font-size:14px; font-weight:600; }
+  .dlg input, .dlg textarea { font:inherit; font-weight:400; padding:6px 8px; border:1px solid var(--line); border-radius:6px; }
+  .dlg .cols { display:grid; grid-template-columns:2fr 1fr 1fr; gap:8px; }
+  .dlg .hint { color:var(--muted); font-size:12px; margin-top:-4px; }
+  .dlg .row { display:flex; gap:8px; justify-content:flex-end; }
+  .dlg .row .danger { margin-right:auto; color:#b42318; }
+  .dlg .steps { margin:14px 22px 0 40px !important; padding:0; font-size:14px; display:grid; gap:4px; }
+  #maxQr { margin:16px 22px 0; text-align:center; min-height:120px; }
+  #maxQr img { max-width:100%; max-height:60vh; border:1px solid var(--line); border-radius:8px; }
+  #dayList { list-style:none; margin:12px 22px; padding:0; display:grid; gap:8px; max-height:40vh; overflow:auto; }
+  #dayList li { border-left:3px solid #6f97ff; padding:6px 10px; background:#f7f9ff; border-radius:4px; }
+  #dayList li.google { border-color:#34a853; background:#f3faf5; }
+  #dayList li.none { border:0; background:none; color:var(--muted); padding:0; }
+  #dayList .sub { color:#4b5563; font-size:13px; margin-top:2px; overflow-wrap:anywhere; }
+  #dayList .tag { color:#14532d; background:#e6f4ea; border-radius:4px; padding:0 5px; margin-left:4px; }
+  button.link { border:0; background:none; color:#b42318; padding:0 4px; font-size:13px; float:right; }
+</style>
+</head>
+<body>
+<aside>
+  <h2>ТВ</h2>
+  <nav><button id="tvBtn" aria-current="false">📺 Прямой эфир</button></nav>
+  <h2>Календарь</h2>
+  <nav id="calNav">
+    <button data-scope="work" aria-current="false">💼 Работа</button>
+    <button data-scope="holidays" aria-current="false">🎉 Праздники</button>
+  </nav>
+  <h2>Рабочие области</h2>
+  <nav id="wsList"></nav>
+  <button class="add" id="addWs">+ Новая область</button>
+  <h2>Отчёты</h2>
+  <div class="reports" id="reports"></div>
+</aside>
+
+<main>
+  <section id="tvView" hidden>
+    <header>
+      <h1 id="tvTitle">…</h1>
+      <a id="tvSite" class="btn" target="_blank" rel="noopener">Открыть на сайте канала ↗</a>
+      <div id="tvList" role="group" aria-label="Телеканалы"></div>
+    </header>
+    <div id="tvPlayer"></div>
+  </section>
+  <section id="calView" hidden>
+    <header>
+      <button id="calPrev" aria-label="Предыдущий месяц">‹</button>
+      <h1 id="calTitle" class="cal-title">…</h1>
+      <button id="calNext" aria-label="Следующий месяц">›</button>
+      <button id="calToday">Сегодня</button>
+      <span class="spacer"></span>
+      <button id="googleBtn" class="work-only">Подключить Google Календарь</button>
+      <button id="calAdd" class="primary work-only">+ Событие</button>
+      <div class="meta work-only"><span id="calMeta"></span>
+        <span class="legend"><i class="lg local"></i>Мои события <i class="lg google"></i>Google</span></div>
+      <div class="hol-only" id="holFilters" role="group" aria-label="Какие праздники показывать"></div>
+    </header>
+    <div id="calGrid"></div>
+  </section>
+  <header id="wsHeader">
+    <h1 id="wsTitle">…</h1>
+    <button id="refreshBtn">Обновить</button>
+    <button id="reportBtn">Отчёт сейчас</button>
+    <button id="settingsBtn">Настройки</button>
+    <div class="meta" id="wsMeta"></div>
+    <div class="errors" id="wsErrors"></div>
+  </header>
+  <div id="feed" aria-live="polite"></div>
+</main>
+
+<dialog id="article">
+  <div class="wrap">
+    <div class="head">
+      <h2 id="aTitle"></h2>
+      <button onclick="article.close()" aria-label="Закрыть">✕</button>
+    </div>
+    <div class="body">
+      <small id="aMeta"></small>
+      <div id="aText"></div>
+      <p><a id="aLink" target="_blank" rel="noopener">Открыть оригинал ↗</a></p>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="settings">
+  <form method="dialog" id="sForm">
+    <label>Название <input name="name" required></label>
+    <label>Источники <span>по одному в строке: просто вставьте ссылку на сайт, раздел новостей, телеграм-канал или канал MAX (max.ru/…) — дашборд сам найдёт RSS и проверит, можно ли мониторить</span>
+      <textarea name="sources"></textarea></label>
+    <ul id="srcStatus"></ul>
+    <label>Ключевые слова <span>через запятую; пусто — показывать всё. Ищется часть слова: «выбор» найдёт «выборы»</span>
+      <input name="keywords"></label>
+    <label>Частота обновления, минут <input name="interval" type="number" min="1" max="1440" required></label>
+    <label>Время отчётов <span>через запятую, формат ЧЧ:ММ, например 09:00, 18:00</span>
+      <input name="reportTimes"></label>
+    <fieldset class="checks">
+      <legend>Что включать в отчёт <span>ничего не отмечено — все новости области за период</span></legend>
+      <label><input type="checkbox" name="repPopular"> Популярные новости <span>сюжеты у нескольких источников и самые просматриваемые посты каналов</span></label>
+      <label><input type="checkbox" name="repKeywords"> Новости по ключевым словам</label>
+    </fieldset>
+    <div class="row">
+      <button type="button" class="danger" id="delWs">Удалить область</button>
+      <button value="cancel" formnovalidate>Отмена</button>
+      <button class="primary" value="save">Сохранить</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dayDlg">
+  <div class="dlg">
+    <div class="head"><h2 id="dayTitle"></h2><button onclick="dayDlg.close()" aria-label="Закрыть">✕</button></div>
+    <ul id="dayList"></ul>
+    <form id="evForm">
+      <h3>Новое событие</h3>
+      <label>Название <input name="summary" required maxlength="200"></label>
+      <div class="cols">
+        <label>Дата <input name="date" type="date" required></label>
+        <label>С <input name="start" type="time"></label>
+        <label>До <input name="end" type="time"></label>
+      </div>
+      <small class="hint">Без времени — событие на весь день</small>
+      <label>Заметка <textarea name="note" rows="2" maxlength="2000"></textarea></label>
+      <div class="row"><button class="primary">Добавить</button></div>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="maxDlg">
+  <div class="dlg">
+    <div class="head"><h2>Вход в MAX</h2><button onclick="maxDlg.close()" aria-label="Закрыть">✕</button></div>
+    <ol class="steps">
+      <li>Откройте MAX на телефоне → Настройки → Устройства и выберите вход по QR-коду.</li>
+      <li>Наведите камеру на QR-код ниже. Код обновляется сам.</li>
+    </ol>
+    <div id="maxQr" aria-live="polite"><p class="hint">Открываю MAX…</p></div>
+  </div>
+</dialog>
+
+<dialog id="googleDlg">
+  <form method="dialog" id="gForm" class="dlg">
+    <div class="head"><h2>Google Календарь</h2><button value="cancel" formnovalidate aria-label="Закрыть">✕</button></div>
+    <ol class="steps">
+      <li>Откройте <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener">настройки Google Календаря</a>.</li>
+      <li>Слева в разделе «Настройки моих календарей» выберите нужный календарь.</li>
+      <li>Пролистайте до «Интеграция календаря» и скопируйте <b>«Секретный адрес в формате iCal»</b>.</li>
+      <li>Вставьте его сюда.</li>
+    </ol>
+    <label>Секретный адрес iCal <input name="url" type="url" required placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"></label>
+    <small class="hint">События Google будут видны в календаре дашборда и обновляются раз в 10 минут. Свои события дашборда в Google не попадают. Адрес — как пароль: не пересылайте его.</small>
+    <p id="gStatus"></p>
+    <div class="row">
+      <button type="button" class="danger" id="gOff">Отключить</button>
+      <button value="cancel" formnovalidate>Отмена</button>
+      <button class="primary" value="save">Подключить</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+let workspaces = [], current = localStorage.ws, items = [], editing = null, calendarOn = localStorage.view === 'calendar';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]);
+const fmt = d => new Date(d).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+const api = async (url, opt = {}) => { const r = await fetch(url, { ...opt, headers: { 'content-type': 'application/json' } }); const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; };
+const ws = () => workspaces.find(w => w.id === current);
+
+// фрагмент вокруг первого совпадения, если оно глубже заголовка и первого абзаца
+function fragment(it) {
+  const kws = (ws()?.keywords || []).map(k => k.toLowerCase());
+  const shown = (it.title + ' ' + (it.text || '').split('\n')[0]).toLowerCase();
+  if (!kws.length || kws.some(k => shown.includes(k))) return '';
+  const body = [it.text, it.full].filter(Boolean).join('\n'), low = body.toLowerCase();
+  const pos = Math.min(...kws.map(k => low.indexOf(k)).filter(p => p >= 0));
+  if (!isFinite(pos)) return '';
+  const a = pos > 80 ? body.lastIndexOf(' ', pos - 80) + 1 : 0, b = body.indexOf(' ', pos + 120);
+  return (a > 0 ? '…' : '') + body.slice(a, b < 0 ? undefined : b).replace(/\n/g, ' ') + (b < 0 ? '' : '…');
+}
+
+function highlight(text) {
+  let h = esc(text);
+  const kws = ws()?.keywords || [];
+  if (kws.length) h = h.replace(new RegExp('(' + kws.map(k => esc(k).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi'), '<mark>$1</mark>');
+  return h;
+}
+
+async function loadWorkspaces() {
+  workspaces = await api('/api/workspaces');
+  if (!ws()) current = workspaces[0]?.id;
+  $('wsList').innerHTML = workspaces.map(w => `<button data-id="${w.id}" aria-current="${w.id === current && !calendarOn}">${esc(w.name)}</button>`).join('');
+  const w = ws();
+  $('wsTitle').textContent = w?.name || 'Создайте рабочую область';
+  $('wsMeta').textContent = w ? `${w.sources.length} источн. · каждые ${w.interval} мин · ` +
+    (w.busy ? 'обновляется…' : w.lastFetch ? 'обновлено ' + fmt(w.lastFetch) : 'ещё не обновлялось') +
+    (w.keywords.length ? ' · слова: ' + w.keywords.join(', ') : '') + (w.reportTimes.length ? ' · отчёты в ' + w.reportTimes.join(', ') : '') +
+    (w.report?.popular || w.report?.keywords ? ' (' + [w.report.popular && 'популярное', w.report.keywords && 'по словам'].filter(Boolean).join(' + ') + ')' : '') : '';
+  const errs = w ? Object.entries(w.errors) : [];
+  $('wsErrors').innerHTML = errs.map(([s, e]) => esc(`Ошибка: ${s} — ${e}`)).join(' · ') +
+    (errs.some(([, e]) => /нет входа в MAX/.test(e)) ? ' <button type="button" class="primary" onclick="openMaxLogin()">Войти в MAX</button>' : '');
+}
+
+async function loadItems() {
+  if (!current) { $('feed').innerHTML = ''; return; }
+  items = await api('/api/items?ws=' + current);
+  $('feed').innerHTML = items.length ? items.map((it, i) => `<button class="item" data-i="${i}">
+      <small>${fmt(it.date)} · ${esc(it.source)}</small>
+      <h3>${highlight(it.title)}</h3>
+      ${it.text ? `<p>${highlight(it.text.split('\n')[0])}</p>` : ''}
+      ${(f => f ? `<p class="frag">${highlight(f)}</p>` : '')(fragment(it))}
+    </button>`).join('')
+    : `<p class="empty">${ws()?.keywords.length ? 'Нет материалов по ключевым словам' : 'Лента пуста — нажмите «Обновить»'}</p>`;
+}
+
+async function loadReports() {
+  const files = await api('/api/reports');
+  $('reports').innerHTML = files.map(f => {
+    const [id, d, t] = f.replace('.html', '').split('_');
+    const name = workspaces.find(w => w.id === id)?.name || id;
+    return `<a href="/reports/${encodeURIComponent(f)}" target="_blank">${esc(name)}<br><small>${d} ${t.replace('-', ':')}</small></a>`;
+  }).join('') || '<p style="padding:0 16px;color:#9aa3b5">Пока нет</p>';
+}
+
+const reloadAll = async () => { await loadWorkspaces(); await loadItems(); };
+
+$('wsList').onclick = e => { const b = e.target.closest('button'); if (!b) return; localStorage.ws = current = b.dataset.id; showCalendar(false); showTv(false); $('feed').scrollTop = 0; reloadAll(); };
+
+$('feed').onclick = async e => {
+  const b = e.target.closest('.item'); if (!b) return;
+  const it = items[b.dataset.i];
+  $('aTitle').innerHTML = highlight(it.title);
+  $('aMeta').textContent = `${fmt(it.date)} · ${it.source}`;
+  $('aLink').href = it.link;
+  const show = t => $('aText').innerHTML = t.split('\n').map(p => `<p>${highlight(p)}</p>`).join('');
+  show(it.full && it.full.length > (it.text || '').length ? it.full : it.text || '');
+  article.showModal();
+  $('article').querySelector('.body').scrollTop = 0;
+  if (/^https:\/\/(t\.me|web\.max\.ru)\//.test(it.link) || it.full) return;
+  if (!it.text) $('aText').innerHTML = '<p><i>Загрузка текста…</i></p>';
+  try { const { text } = await api('/api/article?url=' + encodeURIComponent(it.link)); if (text && text.length > (it.text || '').length) show(text); }
+  catch { if (!it.text) $('aText').innerHTML = '<p><i>Не удалось загрузить текст — откройте оригинал.</i></p>'; }
+};
+
+$('refreshBtn').onclick = async () => { const b = $('refreshBtn'); b.disabled = true; b.textContent = 'Обновляется…';
+  try { await api('/api/refresh?ws=' + current, { method:'POST' }); await reloadAll(); } finally { b.disabled = false; b.textContent = 'Обновить'; } };
+
+$('reportBtn').onclick = async () => {
+  const { file } = await api('/api/report?ws=' + current, { method:'POST' });
+  await loadReports(); open('/reports/' + encodeURIComponent(file), '_blank');
+};
+
+function openSettings(w) {
+  editing = w;
+  const f = $('sForm');
+  f.name.value = w.name; f.sources.value = w.sources.join('\n'); f.keywords.value = w.keywords.join(', ');
+  f.interval.value = w.interval; f.reportTimes.value = w.reportTimes.join(', ');
+  f.repPopular.checked = !!w.report?.popular; f.repKeywords.checked = !!w.report?.keywords;
+  $('delWs').hidden = !w.id;
+  $('srcStatus').innerHTML = ''; checks = {};
+  settings.showModal();
+}
+$('settingsBtn').onclick = () => ws() && openSettings(ws());
+$('addWs').onclick = () => openSettings({ name:'', sources:[], keywords:[], interval:15, reportTimes:[] });
+const split = (s, re) => s.split(re).map(x => x.trim()).filter(Boolean);
+
+async function saveWorkspaces(list) {
+  try { workspaces = await api('/api/workspaces', { method:'PUT', body: JSON.stringify(list) }); }
+  catch (e) { alert('Не сохранено: ' + e.message); return false; }
+  return true;
+}
+
+// проверка источников: строка → промис с вердиктом сервера; уже сохранённые источники не перепроверяем
+let checks = {};
+const check = line => checks[line] ??= api('/api/check', { method:'POST', body: JSON.stringify({ url: line }) })
+  .catch(e => ({ ok:false, source: line, message: 'Ошибка проверки: ' + e.message }));
+async function checkSources() {
+  const lines = split($('sForm').sources.value, /\n/).filter(l => !editing.sources.includes(l));
+  const box = $('srcStatus');
+  box.innerHTML = lines.map(l => `<li><b>${esc(l)}</b><small>Проверяю…</small></li>`).join('');
+  const res = await Promise.all(lines.map(check));
+  if (split($('sForm').sources.value, /\n/).filter(l => !editing.sources.includes(l)).join('\n') !== lines.join('\n')) return res; // текст уже изменился
+  box.innerHTML = res.map((r, i) => `<li class="${!r.ok ? 'bad' : r.kind === 'html' ? 'warn' : 'ok'}">
+    ${r.ok ? (r.kind === 'html' ? '⚠️' : '✅') : '❌'} <b>${esc(lines[i])}</b>
+    <small>${esc(r.message)}${r.ok && r.source !== lines[i] ? ` → будет использован адрес: ${esc(r.source)}` : ''}</small>
+    ${r.sample?.length ? `<small>Например: ${r.sample.map(esc).join(' · ')}</small>` : ''}</li>`).join('');
+  return res;
+}
+let checkTimer;
+$('sForm').sources.addEventListener('input', () => { clearTimeout(checkTimer); checkTimer = setTimeout(checkSources, 800); });
+
+$('sForm').addEventListener('submit', async e => {
+  if (e.submitter?.value !== 'save') return;
+  e.preventDefault();
+  const f = $('sForm'), btn = e.submitter;
+  btn.disabled = true; btn.textContent = 'Проверяю источники…';
+  try {
+    const lines = split(f.sources.value, /\n/), fresh = lines.filter(l => !editing.sources.includes(l));
+    const res = await checkSources(), bad = fresh.filter((l, i) => !res[i].ok);
+    if (bad.length && !confirm(`Эти источники нельзя мониторить:\n${bad.join('\n')}\n\nСохранить область без них?`)) return;
+    const resolved = Object.fromEntries(fresh.map((l, i) => [l, res[i]]));
+    const sources = [...new Set(lines.filter(l => !bad.includes(l)).map(l => resolved[l]?.source || l))];
+    const w = { id: editing.id, name: f.name.value, sources, keywords: split(f.keywords.value, /,/),
+      interval: +f.interval.value, reportTimes: split(f.reportTimes.value, /[,\s]+/),
+      report: { popular: f.repPopular.checked, keywords: f.repKeywords.checked } };
+    const list = w.id ? workspaces.map(x => x.id === w.id ? w : x) : [...workspaces, w];
+    if (!await saveWorkspaces(list)) return;
+    settings.close('save');
+    if (!w.id) current = localStorage.ws = workspaces.at(-1).id;
+    await reloadAll();
+    $('refreshBtn').click();
+  } finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
+});
+
+$('delWs').onclick = async () => {
+  if (!confirm(`Удалить область «${editing.name}» вместе с собранными новостями?`)) return;
+  settings.close('cancel');
+  if (await saveWorkspaces(workspaces.filter(x => x.id !== editing.id))) { current = null; reloadAll(); }
+};
+
+// вход в MAX по QR: сервер держит страницу входа, а мы показываем снимок кода, пока вход не состоится
+let maxTimer;
+async function openMaxLogin() {
+  $('maxQr').innerHTML = '<p class="hint">Открываю MAX…</p>';
+  maxDlg.showModal();
+  const poll = async () => {
+    if (!maxDlg.open) return;
+    try {
+      const r = await api('/api/max/login');
+      if (r.loggedIn) {
+        $('maxQr').innerHTML = '<p><b>✅ Вход выполнен.</b> Обновляю каналы MAX…</p>';
+        setTimeout(() => { maxDlg.close(); $('refreshBtn').click(); }, 1500);
+        return;
+      }
+      $('maxQr').innerHTML = `<img src="${r.qr}" alt="QR-код для входа в MAX">`;
+    } catch (e) { $('maxQr').innerHTML = `<p class="errors">Не удалось открыть MAX: ${esc(e.message)}</p>`; }
+    maxTimer = setTimeout(poll, 3000);
+  };
+  poll();
+}
+maxDlg.addEventListener('close', () => { clearTimeout(maxTimer); api('/api/max/login', { method: 'DELETE' }).catch(() => {}); });
+
+reloadAll().then(loadReports);
+// лента обновляется сама: сервер собирает новости по расписанию, страница подтягивает их
+setInterval(() => { if (!calendarOn && !tvOn && !article.open && !settings.open) { const top = $('feed').scrollTop; reloadAll().then(() => $('feed').scrollTop = top); } }, 30000);
+setInterval(loadReports, 120000);
+</script>
+<script src="/calendar.js"></script>
+<script src="/tv.js"></script>
+</body>
+</html>

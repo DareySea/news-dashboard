@@ -1,0 +1,7 @@
+# личные данные дашборда — живут только на компьютере/сервере, не в GitHub
+data.json
+data.json.tmp
+reports/
+max-profile/
+node_modules/
+.claude/
